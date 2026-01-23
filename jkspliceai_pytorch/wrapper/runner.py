@@ -14,37 +14,20 @@ from jklib.genome import locus
 def predicted_values(sequence, strand, spliceai_models, max_distance, allele, model_name, use_gpu=True):
     if type(spliceai_models) == dict:
         encoded_dna_sequence = one_hot_encode_torch(sequence)
-    elif model_name == "spliceai_torch":
-        # Load default model configuration if passing "spliceai_torch" string
-        # Defaulting to '10k' as per original code logic usually, or passing specific config?
-        # Original code line 53: model10k_drop = SpliceAI.from_preconfigured('10k')
+    elif model_name == "10k_drop":
+        model10k_drop = SpliceAIFactory.from_preconfigured('10k_drop')
+        model10k_drop.eval()
+        encoded_dna_sequence = one_hot_encode_torch(sequence)
+    elif model_name == "spliceai_torch" or model_name == "10k":
         model10k_drop = SpliceAIFactory.from_preconfigured('10k')
         model10k_drop.eval()
         encoded_dna_sequence = one_hot_encode_torch(sequence)
     else:
         encoded_dna_sequence = one_hot_encode_torch(sequence)
 
-    cur = os.path.dirname(os.path.realpath(__file__))
-    # Assuming models are stored parallel to wrapper/runner.py? 
-    # Original: cur = os.path.dirname(os.path.realpath(__file__)) -> jkspliceai_pytorch/spliceAI
-    # New: jkspliceai_pytorch/wrapper
-    # But models seem to be in `models/pytorch_10k/` relative to `spliceAI` dir originally?
-    # Original path: f'{cur}/models/pytorch_10k/10k_{m+1}_retry.pth'
-    # I need to know where the model weights are. 
-    # I should assume they will be moved to `jkspliceai_pytorch/weights/` or kept in `jkspliceai_pytorch/spliceAI/models`?
-    # I will assume `jkspliceai_pytorch/weights`. I'll need to move them later.
-    # Or for now, I can point to `../weights` relative to wrapper.
+    model_dir_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
     
     predict_values = []
-    
-    # Check where weights are. 
-    # I should check if user has weights files.
-    # Assuming they are in `jkspliceai_pytorch/spliceAI/models/pytorch_10k`.
-    # I will move them to `jkspliceai_pytorch/weights/pytorch_10k`.
-    
-    # Path handling:
-    # If running from wrapper/runner.py, '..' goes to jkspliceai_pytorch.
-    base_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__))) # jkspliceai_pytorch
     
     for m in range(5):
         if type(spliceai_models) == dict:
@@ -53,41 +36,15 @@ def predicted_values(sequence, strand, spliceai_models, max_distance, allele, mo
                 pt = model10k_drop(encoded_dna_sequence)
                 pt = F.softmax(pt, dim=-1)
                 predict_values.append(pt.detach().numpy())
-        elif model_name == "spliceai_torch":
-            # Update path to weights
-            model_pth = os.path.join(base_path, 'spliceAI', 'models', 'pytorch_10k', f'10k_{m+1}_retry.pth')
-            # I will plan to move this directory later, but for now let's point to old location or new if I move it.
-            # Let's decide to move it to `jkspliceai_pytorch/weights`.
-            # So path: os.path.join(base_path, 'weights', '10k_{m+1}_retry.pth')
-            # Waittt, the files are named '10k_1_retry.pth' etc. inside 'pytorch_10k' dir?
-            # Original: f'{cur}/models/pytorch_10k/10k_{m+1}_retry.pth'
-            # I will move `spliceAI/models` to `jkspliceai_pytorch/models_data`. Namespaces...
-            # Let's say `jkspliceai_pytorch/data/models`.
-            # For now, I will use absolute path logic or relative to package.
-            
-            # Let's assume I move `models` folder to `jkspliceai_pytorch/models_data`.
-            model_pth = os.path.join(base_path, 'models_data', 'pytorch_10k', f'10k_{m+1}_retry.pth')
+        elif model_name == "spliceai_torch" or model_name == "10k":
+            # Standard 10k model weights
+            model_pth = os.path.join(model_dir_path, 'models_data', 'pytorch_10k', f'10k_{m+1}_retry.pth')
+            _load_and_run_model(model10k_drop, model_pth, encoded_dna_sequence, predict_values)
 
-            if not os.path.exists(model_pth):
-                # Fallback to old path just in case I haven't moved it yet, or error out
-                # Try finding it in original location?
-                # But I am deleting spliceAI folder. So I MUST move it.
-                pass
-
-            state_dict = torch.load(
-                model_pth,
-                map_location=torch.device('cpu')
-            )
-            device = get_device()
-            model10k_drop.load_state_dict(state_dict)
-            model10k_drop.to(device)
-            
-            encoded_dna_sequence_dev = encoded_dna_sequence.to(device)
-            with torch.no_grad():
-                pt = model10k_drop(encoded_dna_sequence_dev)
-            
-            pt = F.softmax(pt, dim=-1)
-            predict_values.append(pt.cpu().detach().numpy())
+        elif model_name == "10k_drop":
+            # 10k_drop model weights in 'pytorch' folder
+            model_pth = os.path.join(model_dir_path, 'models_data', 'pytorch', f'10k_{m+1}_drop_retry.pth')
+            _load_and_run_model(model10k_drop, model_pth, encoded_dna_sequence, predict_values)
 
     predicted_value = np.mean(predict_values, axis=0)
 
@@ -105,6 +62,26 @@ def predicted_values(sequence, strand, spliceai_models, max_distance, allele, mo
     donor_prob_for_raw = predicted_value_for_raw[ :, 2]
 
     return predicted_value, acceptor_prob_for_common, donor_prob_for_common, acceptor_prob_for_raw, donor_prob_for_raw
+
+def _load_and_run_model(model, model_pth, encoded_dna_sequence, predict_values):
+    if not os.path.exists(model_pth):
+        print(f"Warning: Model file not found at {model_pth}")
+        return
+
+    state_dict = torch.load(
+        model_pth,
+        map_location=torch.device('cpu')
+    )
+    device = get_device()
+    model.load_state_dict(state_dict)
+    model.to(device)
+    
+    encoded_dna_sequence_dev = encoded_dna_sequence.to(device)
+    with torch.no_grad():
+        pt = model(encoded_dna_sequence_dev)
+    
+    pt = F.softmax(pt, dim=-1)
+    predict_values.append(pt.cpu().detach().numpy())
 
 def delta_values_with_trace(probs):
     prob1, prob2 = probs
@@ -265,9 +242,13 @@ def spliceAI_model(loc, ref=None, alt=None, max_distance=5000, model='spliceai_t
 
         if 'spliceai_torch' in model:
             spliceai_models=model
+            if model == 'spliceai_torch': # Handle explicit default string
+                 model = '10k' # treat as default 10k
+        elif model in ['10k', '10k_drop']:
+            spliceai_models = model
         elif type(model) == dict:
             spliceai_models=model
-            model='spliceai_torch'
+            model='spliceai_torch' # ?
         else:
             raise Exception(f"Invalid model: {model}")
 

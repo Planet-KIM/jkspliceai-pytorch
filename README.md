@@ -7,10 +7,11 @@
 
 ## Features
 
-- **PyTorch Native**: Optimized for PyTorch environments with support for CUDA and MPS (Apple Silicon).
-- **Modular Design**: Refactored into clean modular components for layers, models, and utilities.
-- **Multiple Architectures**: Supports standard SpliceAI (80nt, 400nt, 2k, 10k), UNet-based, and Transformer-based variants.
-- **Easy Inference**: Simple `spliceAI` wrapper for quick predictions.
+- **Refactored Structure**: Clean separation of layers, models, utilities, and wrappers.
+- **PyTorch Integration**: Full support for PyTorch models including standard SpliceAI and custom variants (UNet, Transformer).
+- **Multiple Models**: Supports standard `10k` and `10k_drop` (with dropout) models.
+- **GPU/MPS Support**: Automatically detects CUDA (NVIDIA) or MPS (Apple Silicon), falling back to CPU.
+- **Easy Inference**: Wrapper function `spliceAI` for easy prediction from genomic loci.
 
 ## Installation
 
@@ -33,7 +34,7 @@
 
 2. Install dependencies:
    ```bash
-   pip install -r config/requirements.txt
+   pip install -r requirements.txt
    ```
    *Note: Ensure `torch` is installed according to your system configuration (CUDA/CPU).*
 
@@ -64,17 +65,13 @@ loc = locus("chr1:925952-925952")
 ref = "G"
 alt = "A"
 
-# Run prediction
-# use_gpu=True will automatically use CUDA or MPS if available
-result = spliceAI(
-    loc=loc, 
-    ref=ref, 
-    alt=alt, 
-    view=5, 
-    use_gpu=True
-)
+# Run prediction with standard model (default)
+result = spliceAI(loc=loc, ref=ref, alt=alt, use_gpu=True)
+print("Standard Result:", result)
 
-print(result)
+# Run prediction with 10k_drop model
+result_drop = spliceAI(loc=loc, ref=ref, alt=alt, model='10k_drop', use_gpu=True)
+print("Drop Model Result:", result_drop)
 ```
 
 ### Running Tests
