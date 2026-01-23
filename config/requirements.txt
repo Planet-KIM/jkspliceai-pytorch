@@ -1,0 +1,11 @@
+h5py
+matplotlib
+numpy
+pandas
+pycparser
+PyYAML
+scikit-learn
+scipy
+seaborn
+tensorflow
+twobitreader

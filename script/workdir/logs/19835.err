@@ -1,0 +1,11 @@
+2026-01-22 12:51:29.335012: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  SSE4.1 SSE4.2 AVX AVX2 AVX512F AVX512_VNNI FMA
+To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+2026-01-22 12:51:29.452891: I tensorflow/core/util/port.cc:104] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+Traceback (most recent call last):
+  File "workdir/run_spliceai.py", line 4, in <module>
+    from jkspliceai.spliceAI import spliceAI_model
+  File "/storage0/home/jkportal/module/jklab/jkspliceai/jkspliceai/spliceAI/__init__.py", line 22, in <module>
+    import torch
+  File "/storage0/home/jkportal/.conda/envs/portal/lib/python3.8/site-packages/torch/__init__.py", line 290, in <module>
+    from torch._C import *  # noqa: F403
+ImportError: /storage0/home/jkportal/.conda/envs/portal/lib/python3.8/site-packages/torch/lib/libtorch_cuda.so: undefined symbol: ncclCommRegister
