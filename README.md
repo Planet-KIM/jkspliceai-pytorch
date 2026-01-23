@@ -3,13 +3,14 @@
 
 ## Description
 
-`jkspliceai-pytorch` is a PyTorch implementation of the SpliceAI module, separated from the original `jkspliceai` package to resolve dependency conflicts with TensorFlow. This module is designed to run SpliceAI models using PyTorch, supporting both CPU and GPU (CUDA/MPS) environments.
+`jkspliceai-pytorch` is a PyTorch implementation of the SpliceAI module, optimized for efficiency and flexibility. It is separated from the original `jkspliceai` package to resolve dependency conflicts and provide a pure PyTorch environment.
 
 ## Features
 
-- **PyTorch Native**: Optimized for PyTorch environments.
-- **GPU Support**: Supports NVIDIA CUDA and Apple Metal Performance Shaders (MPS).
-- **Simplified API**: Easy-to-use wrapper `spliceAI` for running predictions.
+- **PyTorch Native**: Optimized for PyTorch environments with support for CUDA and MPS (Apple Silicon).
+- **Modular Design**: Refactored into clean modular components for layers, models, and utilities.
+- **Multiple Architectures**: Supports standard SpliceAI (80nt, 400nt, 2k, 10k), UNet-based, and Transformer-based variants.
+- **Easy Inference**: Simple `spliceAI` wrapper for quick predictions.
 
 ## Installation
 
@@ -20,6 +21,7 @@
 - pandas
 - numpy
 - h5py
+- einops
 
 ### Installing from Source
 
@@ -40,12 +42,21 @@
    pip install -e .
    ```
 
+## Directory Structure
+
+- **`jkspliceai_pytorch/`**: Main package source.
+  - **`layers/`**: Basic building blocks (Residual blocks, SE blocks, Attention).
+  - **`models/`**: Model architecture definitions (Standard, UNet, Transformer).
+  - **`utils/`**: Helper functions for data processing and device management.
+  - **`wrapper/`**: High-level API for running SpliceAI.
+  - **`models_data/`**: Stores model weights (`.pth` files).
+
 ## Usage
 
 ### Basic Usage
 
 ```python
-from jkspliceai_pytorch.spliceAI import spliceAI
+from jkspliceai_pytorch import spliceAI
 from jklib.genome import locus
 
 # Define variant location
@@ -68,17 +79,11 @@ print(result)
 
 ### Running Tests
 
-To verify the installation and device configuration, run the provided test script:
+To verify the installation and device configuration:
 
 ```bash
 python script/test_spliceai_pytorch.py
 ```
-
-## Structure
-
-- `jkspliceai_pytorch/`: Main package source code.
-- `script/`: Helper and test scripts.
-- `setup.py`: Package installation script.
 
 ## License
 

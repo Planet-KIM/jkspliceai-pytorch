@@ -16,7 +16,9 @@ REQUIRES = [
 'matplotlib',
 'pandas',
 'numpy',
-'pyyaml'
+'pyyaml',
+'h5py',
+'einops'
 ]
 
 def package_files(directory):

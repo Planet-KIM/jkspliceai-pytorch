@@ -1,1 +1,3 @@
-__version__ = 'v0.0.1' 
+
+from .wrapper import spliceAI
+from .models.spliceai import SpliceAI

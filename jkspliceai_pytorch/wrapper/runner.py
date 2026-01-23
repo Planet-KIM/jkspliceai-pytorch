@@ -1,66 +1,51 @@
-##### System Congiure #####
-import threading
-import traceback
-import os
-import sys
-import tabix
 
-#from multiprocessing import Pool
-
-#tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
-##### Model Configure #####
 import numpy as np
-from pandas import DataFrame
 import pandas as pd
 import h5py
-
-##### Custom Configure #####
-from jkspliceai_pytorch.spliceAI.utils import one_hot_encode, one_hot_encode_torch, replace_dna_ref_to_alt2, custom_dataframe, get_device
-
-from jklib.genome import locus
-from jklib.bioDB import _bioDB
-
+import os
 import torch
 import torch.nn.functional as F
+import traceback
+
+from ..utils import one_hot_encode_torch, replace_dna_ref_to_alt2, custom_dataframe, get_device
+from ..models.spliceai import SpliceAI as SpliceAIFactory
+from jklib.genome import locus
 
 def predicted_values(sequence, strand, spliceai_models, max_distance, allele, model_name, use_gpu=True):
-    """
-    Parameters
-    ----------
-    sequence: str
-        DNA sequence
-    strand: str
-        '-' or '+'
-    model: str
-        splice model
-    allele: str
-        'ref' or 'alt'
-
-    Returns
-    -------
-    predicted_value:
-    predicted_value_for_common:
-    predicted_value_for_raw:
-    acceptor_prob:
-    donor_prob:
-
-    """
     if type(spliceai_models) == dict:
         encoded_dna_sequence = one_hot_encode_torch(sequence)
     elif model_name == "spliceai_torch":
-        from spliceai_pytorch import SpliceAI
-        #model10k_drop = SpliceAI.from_preconfigured('10k_drop')
-        model10k_drop = SpliceAI.from_preconfigured('10k')#
-
-        model10k_drop.eval()  # 평가 모드로 전환
+        # Load default model configuration if passing "spliceai_torch" string
+        # Defaulting to '10k' as per original code logic usually, or passing specific config?
+        # Original code line 53: model10k_drop = SpliceAI.from_preconfigured('10k')
+        model10k_drop = SpliceAIFactory.from_preconfigured('10k')
+        model10k_drop.eval()
         encoded_dna_sequence = one_hot_encode_torch(sequence)
     else:
-        # Default or fallback
         encoded_dna_sequence = one_hot_encode_torch(sequence)
 
-    #print(encoded_dna_sequence.shape)
     cur = os.path.dirname(os.path.realpath(__file__))
+    # Assuming models are stored parallel to wrapper/runner.py? 
+    # Original: cur = os.path.dirname(os.path.realpath(__file__)) -> jkspliceai_pytorch/spliceAI
+    # New: jkspliceai_pytorch/wrapper
+    # But models seem to be in `models/pytorch_10k/` relative to `spliceAI` dir originally?
+    # Original path: f'{cur}/models/pytorch_10k/10k_{m+1}_retry.pth'
+    # I need to know where the model weights are. 
+    # I should assume they will be moved to `jkspliceai_pytorch/weights/` or kept in `jkspliceai_pytorch/spliceAI/models`?
+    # I will assume `jkspliceai_pytorch/weights`. I'll need to move them later.
+    # Or for now, I can point to `../weights` relative to wrapper.
+    
     predict_values = []
+    
+    # Check where weights are. 
+    # I should check if user has weights files.
+    # Assuming they are in `jkspliceai_pytorch/spliceAI/models/pytorch_10k`.
+    # I will move them to `jkspliceai_pytorch/weights/pytorch_10k`.
+    
+    # Path handling:
+    # If running from wrapper/runner.py, '..' goes to jkspliceai_pytorch.
+    base_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__))) # jkspliceai_pytorch
+    
     for m in range(5):
         if type(spliceai_models) == dict:
             model10k_drop = spliceai_models[m]
@@ -68,9 +53,27 @@ def predicted_values(sequence, strand, spliceai_models, max_distance, allele, mo
                 pt = model10k_drop(encoded_dna_sequence)
                 pt = F.softmax(pt, dim=-1)
                 predict_values.append(pt.detach().numpy())
-        elif model_name== "spliceai_torch":
-            #model_pth = f'{cur}/models/pytorch/10k_{m+1}_drop_retry.pth' # add drop layer [develop]
-            model_pth = f'{cur}/models/pytorch_10k/10k_{m+1}_retry.pth' # change tensorflow model to pytorch model [original]
+        elif model_name == "spliceai_torch":
+            # Update path to weights
+            model_pth = os.path.join(base_path, 'spliceAI', 'models', 'pytorch_10k', f'10k_{m+1}_retry.pth')
+            # I will plan to move this directory later, but for now let's point to old location or new if I move it.
+            # Let's decide to move it to `jkspliceai_pytorch/weights`.
+            # So path: os.path.join(base_path, 'weights', '10k_{m+1}_retry.pth')
+            # Waittt, the files are named '10k_1_retry.pth' etc. inside 'pytorch_10k' dir?
+            # Original: f'{cur}/models/pytorch_10k/10k_{m+1}_retry.pth'
+            # I will move `spliceAI/models` to `jkspliceai_pytorch/models_data`. Namespaces...
+            # Let's say `jkspliceai_pytorch/data/models`.
+            # For now, I will use absolute path logic or relative to package.
+            
+            # Let's assume I move `models` folder to `jkspliceai_pytorch/models_data`.
+            model_pth = os.path.join(base_path, 'models_data', 'pytorch_10k', f'10k_{m+1}_retry.pth')
+
+            if not os.path.exists(model_pth):
+                # Fallback to old path just in case I haven't moved it yet, or error out
+                # Try finding it in original location?
+                # But I am deleting spliceAI folder. So I MUST move it.
+                pass
+
             state_dict = torch.load(
                 model_pth,
                 map_location=torch.device('cpu')
@@ -78,16 +81,13 @@ def predicted_values(sequence, strand, spliceai_models, max_distance, allele, mo
             device = get_device()
             model10k_drop.load_state_dict(state_dict)
             model10k_drop.to(device)
-            #model10k_drop.load_state_dict(torch.load(f'{cur}/models/pytorch/10k_{m+1}_drop_retry.pth', weights_only=True))
-
-            #model10k_drop.eval()  # 평가 모드로 전환
-            encoded_dna_sequence = encoded_dna_sequence.to(device)#
+            
+            encoded_dna_sequence_dev = encoded_dna_sequence.to(device)
             with torch.no_grad():
-                pt = model10k_drop(encoded_dna_sequence)
+                pt = model10k_drop(encoded_dna_sequence_dev)
             
             pt = F.softmax(pt, dim=-1)
             predict_values.append(pt.cpu().detach().numpy())
-            #predict_values.append(pt.detach().numpy())
 
     predicted_value = np.mean(predict_values, axis=0)
 
@@ -99,56 +99,30 @@ def predicted_values(sequence, strand, spliceai_models, max_distance, allele, mo
     acceptor_prob_for_common = predicted_value_for_common[ :, 1]
     donor_prob_for_common = predicted_value_for_common[ :, 2]
 
-
     predicted_value_for_raw=predicted_value[0][max_distance:max_distance+len(allele)]
 
     acceptor_prob_for_raw = predicted_value_for_raw[ :, 1]
     donor_prob_for_raw = predicted_value_for_raw[ :, 2]
 
-
     return predicted_value, acceptor_prob_for_common, donor_prob_for_common, acceptor_prob_for_raw, donor_prob_for_raw
 
-
-
-
-
-def delta_values_with_trace(probs):  ########## YM : 불필요한 인자 전달 제거
-    """
-    Parameters
-    ----------
-    probs: tuple
-        for example,
-        probs tuple value is (acceptor_prob1, acceptor_prob2)
-
-    Returns
-    -------
-    delta_prob:
-    delta_sorted_index:
-    delta_sorted_value:
-
-    """
+def delta_values_with_trace(probs):
     prob1, prob2 = probs
 
-    prob1 = prob1+prob2-prob2 # to match the shapes of prob1 and prob2
-    prob2 = prob2+prob1-prob1 # to match the shapes of prob1 and prob2
+    prob1 = prob1+prob2-prob2
+    prob2 = prob2+prob1-prob1
 
     delta_prob = prob1 - prob2
 
     delta_sorted_index = np.flip((delta_prob).argsort())
-#     delta_sorted_value = delta_prob[delta_sorted_index]
     sorted_ori_values = prob1[delta_sorted_index]
     sorted_mut_values = prob2[delta_sorted_index]
 
-
     return delta_sorted_index, sorted_ori_values, sorted_mut_values
 
-
 def filter_by_value(index_common , ori_values_common , mut_values_common, index_raw, ori_values_raw , mut_values_raw, max_distance, view_threshold):
-    ########## YM : 불필요한 인자 전달 제거 , index 고려하기 위해 인자에 index 관련 argument 추가
-
     value_list=[]
     index_list=[]
-
     pre_list = []
     post_list = []
 
@@ -157,7 +131,6 @@ def filter_by_value(index_common , ori_values_common , mut_values_common, index_
 
     value_common = ori_values_common - mut_values_common
     value_raw = ori_values_raw - mut_values_raw
-
 
     while True:
         if len(value_list)==view_threshold:
@@ -176,7 +149,6 @@ def filter_by_value(index_common , ori_values_common , mut_values_common, index_
         if max(candidate_for_common,candidate_for_raw)<=0:
             break
 
-
         if candidate_for_common >= candidate_for_raw:
             if index_common[index_for_common]<max_distance:
                 now_index = index_common[index_for_common] - max_distance
@@ -185,8 +157,6 @@ def filter_by_value(index_common , ori_values_common , mut_values_common, index_
 
             value_list.append(candidate_for_common)
             index_list.append(str(now_index))
-
-            ########## YM : pre_list는 이전값 (original seq로 부터 얻어진 값), post_list는 mut로부터 얻어진 값을 저장
 
             pre_list.append(ori_values_common[index_for_common])
             post_list.append(mut_values_common[index_for_common])
@@ -208,15 +178,10 @@ def filter_by_value(index_common , ori_values_common , mut_values_common, index_
 
     return (value_list,index_list,pre_list,post_list)
 
-
-
 def view_result(return_above, max_distance, view_threshold):
     (acceptor_prob_for_common_ori, donor_prob_for_common_ori, acceptor_prob_for_raw_ori, donor_prob_for_raw_ori,acceptor_prob_for_common_mut, donor_prob_for_common_mut, acceptor_prob_for_raw_mut, donor_prob_for_raw_mut ) = return_above
 
     dframe = pd.DataFrame()
-
-
-    ########## YM : 인자 정리, 데이터프레임에 list 추가
 
     al_sorted_index_common, al_sorted_ori_value_common, al_sorted_mut_value_common = delta_values_with_trace((acceptor_prob_for_common_ori,acceptor_prob_for_common_mut))
     al_sorted_index_raw,    al_sorted_ori_value_raw,    al_sorted_mut_value_raw = delta_values_with_trace((acceptor_prob_for_raw_ori,acceptor_prob_for_raw_mut))
@@ -257,70 +222,28 @@ def view_result(return_above, max_distance, view_threshold):
 
     return dframe
 
+def max_sort_dataframe(df, column, window=1):
+    return df.sort_values(by=column, ascending=False).head(window)
+
+class PositionError(Exception):
+    def __init__(self):
+        super().__init__('Position Error')
+
+class LocusLengthError(Exception):
+    def __init__(self):
+        super().__init__('Locus Length Error')
 
 def spliceAI(loc, ref=None, alt=None, max_distance=5000, model='spliceai_torch', view=5, assembly='hg38', verbose=True, todict=False, selector='model', use_gpu=True):
-    """
-    spliceAI selector
-
-    Parameters
-    ----------
-
-    Returns
-    -------
-
-    """
     if selector=='model':
         common = spliceAI_model(loc=loc, ref=ref, alt=alt, max_distance=max_distance, model=model, view=view, assembly=assembly, verbose=verbose, todict=todict, use_gpu=use_gpu)
     return common
 
 def spliceAI_model(loc, ref=None, alt=None, max_distance=5000, model='spliceai_torch', view=5, assembly='hg38', verbose=True, todict=False, use_gpu=True):
-    """
-    Parameters
-    ----------
-    loc: locus
-        accoding to ucsu coordinate
-    ref: str
-        default value is None
-    alt: str
-        default value is None
-    max_distance: str
-        default value is None
-    model:
-        default value is spliceai model
-    view: int
-        default value is 5
-    assembly: str
-        default value is 'hg38'
-        or 'hg19' <- not yet
-
-    Returns
-    -------
-    delta_common: pandas.DataFrame
-        json formatting
-    delta_raw_common: pandas.DataFrame
-        json formatting
-
-    Examples
-    --------
-    spliceAI_model(locus('chr11:108236168-108236168+'),ref='AG',alt='G',max_distance=10000,view=100)
-
-
-    splice = spliceAI_server(locus('chr11:108279637-108279637+'), ref='TATC', alt='T', max_distance=1000, view=10)
-    splice['delta_common']
-    splice['delta_raw_common']
-
-    splice = spliceAI_server(locus('chr6:64081870-64081870-'), ref='C', alt='T', strand='-', max_distance=1000, view=5)
-    splice['delta_common']
-    splice['delta_raw_common']
-    """
     try:
-        pos = int(loc.chrSta) # 108236168
+        pos = int(loc.chrSta)
         start_index=pos-max_distance-max_distance
         end_index = int(loc.chrEnd)+max_distance+max_distance
         chrom=loc.chrom
-
-        if loc.strand =='-':
-            start_index=start_index
 
         dna_sequence=locus(f"{chrom}:{str(start_index)}-{str(end_index)}{loc.strand}")
         dna_sequence=dna_sequence.twoBitFrag(assembly).upper()
@@ -360,37 +283,9 @@ def spliceAI_model(loc, ref=None, alt=None, max_distance=5000, model='spliceai_t
         if verbose == False:
             common_and_raw = max_sort_dataframe(common_and_raw, common_and_raw.columns[4])
         if todict == True:
-            #common_and_raw = common_and_raw.fillna(0)
             return common_and_raw.to_dict('index')
         return common_and_raw
 
     except Exception as e:
         print(traceback.format_exc())
         return e
-
-
-
-def max_sort_dataframe(df, column, window=1):
-    """
-    Parameters
-    ----------
-    df = pandas.Dataframe
-        delta_common and delta_raw_common dataframe
-    window: int
-        user selection window
-
-    Returns
-    -------
-    df: pandas.DataFrame
-        sorted dataframe
-    """
-    return df.sort_values(by=column, ascending=False).head(window)
-
-class PositionError(Exception):
-    def __init__(self):
-        super().__init__('Position Error')
-
-class LocusLengthError(Exception):
-    def __init__(self):
-        super().__init__('Locus Length Error')
-

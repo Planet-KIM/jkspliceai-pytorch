@@ -5,7 +5,7 @@ import os
 # Add parent directory to path to ensure we import the local package
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from jkspliceai_pytorch.spliceAI import spliceAI
+from jkspliceai_pytorch import spliceAI
 from jklib.genome import locus
 import torch
 
